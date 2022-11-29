@@ -1,6 +1,8 @@
+using System;
 using System.Collections;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using Unity.WebRTC;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -9,9 +11,12 @@ using UnityEngine.UI;
 public class aiortcConnector : MonoBehaviour
 {
     [SerializeField] private string aiortcServerURL;
-    [SerializeField] private RawImage receiveVideo;
+    [SerializeField] private GameObject sphere;
     [SerializeField] private VideoTransformType videoTransformType;
+    [SerializeField] private ImtpEncoder imtpEncoder;
 
+    private Texture2D incomingTexture2D;
+    private Color[] oldColors = null;
     public enum VideoTransformType
     {
         None,
@@ -42,21 +47,38 @@ public class aiortcConnector : MonoBehaviour
     }
 
     private RTCPeerConnection pc;
-    private Camera cam;
-    private RenderTexture rt;
-    private MediaStream receiveVideoStream;
+    private MediaStream receiveStream;
 
     void Start()
     {
         WebRTC.Initialize();
         StartCoroutine(WebRTC.Update());
-        cam = Camera.main;
-        rt = new RenderTexture(1920, 1080, 0, RenderTextureFormat.BGRA32, 0);
         Connect();
     }
 
     public void Connect()
     {
+        receiveStream = new MediaStream();
+        receiveStream.OnAddTrack = e =>
+        {
+            if (e.Track is VideoStreamTrack track)
+            {
+                // You can access received texture using `track.Texture` property.
+                Debug.Log("receiveStream.OnAddTrack ");
+                incomingTexture2D = (Texture2D) track.Texture;
+            }
+            else if (e.Track is AudioStreamTrack track2)
+            {
+                // This track is for audio.
+            }
+        };
+        receiveStream.OnRemoveTrack = ev =>
+        {
+            Debug.Log("receiveStream.OnRemoveTrack");
+            sphere.GetComponent<Renderer>().material.mainTexture = null;
+            ev.Track.Dispose();
+        };
+
         pc = new RTCPeerConnection();
         pc.OnIceCandidate = cand =>
         {
@@ -88,30 +110,34 @@ public class aiortcConnector : MonoBehaviour
         pc.OnTrack = e =>
         {
             Debug.Log($"OnTrack");
-
+            if (e.Track.Kind == TrackKind.Video)
+            {
+                // Add track to MediaStream for receiver.
+                // This process triggers `OnAddTrack` event of `MediaStream`.
+                receiveStream.AddTrack(e.Track);
+            }
             if (e.Track is VideoStreamTrack video)
             {
                 Debug.Log($"OnTrackVideo");
 
                 video.OnVideoReceived += tex =>
                 {
-                    receiveVideo.texture = tex;
-                };
-                receiveVideoStream = e.Streams.First();
-                receiveVideoStream.OnRemoveTrack = ev =>
-                {
-                    receiveVideo.texture = null;
-                    ev.Track.Dispose();
+                    sphere.GetComponent<Renderer>().material.mainTexture = tex;
                 };
             }
         };
-        var videoTrack = new VideoStreamTrack(rt);
-        pc.AddTrack(videoTrack);
         StartCoroutine(CreateDesc(RTCSdpType.Offer));
     }
 
-    private IEnumerator CreateDesc(RTCSdpType type)
-    {
+    private IEnumerator CreateDesc(RTCSdpType type){
+        if(type == RTCSdpType.Offer)
+        {
+            var transceiver1 = pc.AddTransceiver(TrackKind.Video);
+            transceiver1.Direction = RTCRtpTransceiverDirection.RecvOnly;
+            var transceiver2 = pc.AddTransceiver(TrackKind.Audio);
+            transceiver2.Direction = RTCRtpTransceiverDirection.RecvOnly;
+            Debug.Log("Offer");
+        }
         var op = type == RTCSdpType.Offer ? pc.CreateOffer() : pc.CreateAnswer();
         yield return op;
 
@@ -155,7 +181,13 @@ public class aiortcConnector : MonoBehaviour
         req.SetRequestHeader("Content-Type", "application/json");
 
         yield return req.SendWebRequest();
-
+        /*
+        Debug.Log($"aiortcSignaling1: {msg}");
+        Debug.Log($"aiortcSignaling2: {jsonStr}");
+        Debug.Log($"aiortcSignaling3: {bodyRaw}");
+        Debug.Log($"aiortcSignaling4: {req.url}");
+        Debug.Log($"aiortcSignaling5: {req.downloadHandler.text}");
+        */
         var resMsg = JsonUtility.FromJson<SignalingMsg>(req.downloadHandler.text);
 
         yield return StartCoroutine(SetDesc(Side.Remote, resMsg.ToDesc()));
@@ -163,10 +195,15 @@ public class aiortcConnector : MonoBehaviour
 
     void Update()
     {
+        if (imtpEncoder != null)
+        {
+            imtpEncoder.SetLastReceivedTexture(sphere.GetComponent<Renderer>().material.mainTexture);
+        }
+        /*
         var originalTargetTexture = cam.targetTexture;
         cam.targetTexture = rt;
         cam.Render();
-        cam.targetTexture = originalTargetTexture;
+        cam.targetTexture = originalTargetTexture;*/
     }
 }
 
