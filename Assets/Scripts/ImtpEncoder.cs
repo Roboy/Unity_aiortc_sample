@@ -6,6 +6,7 @@ public class ImtpEncoder : MonoBehaviour
 {
     [SerializeField] private RawImage leftEye;
     [SerializeField] private RawImage rightEye;
+    [SerializeField] private GameObject sphere;
     private Texture2D lastReceivedTexture;
 
     public void SetLastReceivedTexture(Texture lastReceivedTexture_)
@@ -60,9 +61,16 @@ public class ImtpEncoder : MonoBehaviour
         return croppedTexture;
     }
 
+    void RenderSphere(GameObject sphere, Texture2D texture2D)
+    {
+        Material runtimeMaterial = sphere.GetComponent<Renderer>().material;
+        runtimeMaterial.mainTexture = texture2D;
+        sphere.GetComponent<Renderer>().material = runtimeMaterial;
+    }
     private void Update()
     {
-        leftEye.texture = GetEyeTexture2D(lastReceivedTexture, "left");
-        rightEye.texture = GetEyeTexture2D(lastReceivedTexture, "right");
+        leftEye.texture = lastReceivedTexture;// GetEyeTexture2D(lastReceivedTexture, "left");
+        rightEye.texture = lastReceivedTexture;//GetEyeTexture2D(lastReceivedTexture, "right");
+        RenderSphere(sphere, GetEyeTexture2D(lastReceivedTexture, "right"));
     }
 }

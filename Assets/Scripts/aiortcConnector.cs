@@ -181,13 +181,13 @@ public class aiortcConnector : MonoBehaviour
         req.SetRequestHeader("Content-Type", "application/json");
 
         yield return req.SendWebRequest();
-        /*
+        
         Debug.Log($"aiortcSignaling1: {msg}");
         Debug.Log($"aiortcSignaling2: {jsonStr}");
         Debug.Log($"aiortcSignaling3: {bodyRaw}");
         Debug.Log($"aiortcSignaling4: {req.url}");
         Debug.Log($"aiortcSignaling5: {req.downloadHandler.text}");
-        */
+        
         var resMsg = JsonUtility.FromJson<SignalingMsg>(req.downloadHandler.text);
 
         yield return StartCoroutine(SetDesc(Side.Remote, resMsg.ToDesc()));
