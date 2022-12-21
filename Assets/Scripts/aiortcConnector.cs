@@ -5,15 +5,17 @@ using System.Text;
 using System.Threading;
 using Unity.WebRTC;
 using UnityEngine;
+using UnityEngine.Audio;
 using UnityEngine.Networking;
 using UnityEngine.UI;
 
 public class aiortcConnector : MonoBehaviour
 {
     [SerializeField] private string aiortcServerURL;
-    [SerializeField] private GameObject sphere;
+    [SerializeField] private RawImage dummyImage;
     [SerializeField] private VideoTransformType videoTransformType;
     [SerializeField] private ImtpEncoder imtpEncoder;
+    [SerializeField] private AudioSource receiveAudio;
 
     private Texture2D incomingTexture2D;
     private Color[] oldColors = null;
@@ -48,14 +50,49 @@ public class aiortcConnector : MonoBehaviour
 
     private RTCPeerConnection pc;
     private MediaStream receiveStream;
+    
+    private RTCDataChannel dataChannel, remoteDataChannel;
+    private DelegateOnMessage onDataChannelMessage;
+    private DelegateOnOpen onDataChannelOpen;
+    private DelegateOnClose onDataChannelClose;
+    private DelegateOnDataChannel onDataChannel;
 
     void Start()
     {
+        
+        onDataChannel = channel =>
+        {
+            Debug.Log($"onDataChannel");
+            remoteDataChannel = channel;
+            remoteDataChannel.OnMessage = onDataChannelMessage;
+        };
+        onDataChannelMessage = bytes =>
+        {
+            var str = System.Text.Encoding.UTF8.GetString(bytes);
+            Debug.Log($"{str}");
+            //textReceive.text = System.Text.Encoding.UTF8.GetString(bytes);
+        };
+        onDataChannelOpen = () =>
+        {
+            Debug.Log($"onDataChannelOpen");
+            SendMsg();
+        };
+        onDataChannelClose = () =>
+        {
+            Debug.Log($"onDataChannelClose");
+        };
         WebRTC.Initialize();
         StartCoroutine(WebRTC.Update());
         Connect();
     }
 
+    public void Stop()
+    {
+        receiveAudio.Stop();
+        receiveAudio.clip = null;
+        WebRTC.Dispose();
+    }
+    
     public void Connect()
     {
         receiveStream = new MediaStream();
@@ -70,12 +107,13 @@ public class aiortcConnector : MonoBehaviour
             else if (e.Track is AudioStreamTrack track2)
             {
                 // This track is for audio.
+                
             }
         };
         receiveStream.OnRemoveTrack = ev =>
         {
             Debug.Log("receiveStream.OnRemoveTrack");
-            sphere.GetComponent<Renderer>().material.mainTexture = null;
+            dummyImage.texture = null;
             ev.Track.Dispose();
         };
 
@@ -122,10 +160,21 @@ public class aiortcConnector : MonoBehaviour
 
                 video.OnVideoReceived += tex =>
                 {
-                    sphere.GetComponent<Renderer>().material.mainTexture = tex;
+                    dummyImage.texture = tex;
                 };
             }
+            if (e.Track is AudioStreamTrack audioTrack)
+            {
+                receiveAudio.SetTrack(audioTrack);
+                receiveAudio.loop = true;
+                receiveAudio.Play();
+            }
         };
+        pc.OnDataChannel = onDataChannel;
+        RTCDataChannelInit conf = new RTCDataChannelInit();
+        conf.ordered = true;
+        dataChannel = pc.CreateDataChannel("ping", conf);
+        dataChannel.OnOpen = onDataChannelOpen;
         StartCoroutine(CreateDesc(RTCSdpType.Offer));
     }
 
@@ -197,13 +246,18 @@ public class aiortcConnector : MonoBehaviour
     {
         if (imtpEncoder != null)
         {
-            imtpEncoder.SetLastReceivedTexture(sphere.GetComponent<Renderer>().material.mainTexture);
+            imtpEncoder.SetLastReceivedTexture(dummyImage.texture);
         }
         /*
         var originalTargetTexture = cam.targetTexture;
         cam.targetTexture = rt;
         cam.Render();
         cam.targetTexture = originalTargetTexture;*/
+    }
+    public void SendMsg()
+    {
+        Debug.Log($"SendMsg ping");
+        dataChannel.Send("ping");
     }
 }
 
