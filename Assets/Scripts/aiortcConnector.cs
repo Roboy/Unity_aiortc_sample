@@ -175,6 +175,7 @@ public class aiortcConnector : MonoBehaviour
         conf.ordered = true;
         dataChannel = pc.CreateDataChannel("ping", conf);
         dataChannel.OnOpen = onDataChannelOpen;
+        dataChannel.OnMessage = onDataChannelMessage;
         StartCoroutine(CreateDesc(RTCSdpType.Offer));
     }
 
